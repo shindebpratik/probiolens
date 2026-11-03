@@ -1,379 +1,343 @@
-# 🧬 ProbioLens: Genome-Based Prediction of Probiotic Potential and Safety
+# 🧬 ProbioLens: Genome-Based Prediction of Probiotic Potential
 
-ProbioLens is a genome-based prediction toolkit designed to evaluate **probiotic potential** and **safety potential** from bacterial genome sequences. It uses pretrained 8-mer Word2Vec embeddings and trained machine-learning classifiers to generate probability-based predictions from complete genomes and metagenome-assembled genomes (MAGs).
+ProbioLens is a command-line toolkit for predicting **probiotic potential** from bacterial genome sequences using a codon-usage-based machine-learning model. It supports assembled isolate genomes, individual MAGs, batches of MAG FASTA files, and read-based workflows that assemble sequencing reads with MEGAHIT.
 
-The toolkit provides a command-line interface for analysing individual genomes or processing multiple MAG FASTA files in a directory. Prediction models and their associated word-vector representations are bundled with the Python package for convenient installation and execution.
+The current implementation uses **one probiotic-potential classifier (ProbioLens-P)**. It does not provide the former embedding-based prediction workflow or a separate ProbioLens-S safety model.
 
 ---
 
 ## 🔍 Overview
 
-ProbioLens provides two complementary prediction tasks:
+ProbioLens provides one prediction task:
 
-* **ProbioLens-P - Probiotic Potential:** Predicts whether a genome is classified as having probiotic potential.
-* **ProbioLens-S - Safety Potential:** Predicts whether a genome is classified as having safety potential.
+- **Probiotic Potential:** predicts the probability that an input genome has probiotic potential and assigns `Probiotic` or `Non-Probiotic` using a fixed probability threshold of **0.8**.
 
-Both prediction tasks use genome-derived 8-mer embeddings and their corresponding trained classifiers. The selected classifier produces a positive-class probability, which is compared with a user-defined threshold to determine the final prediction label.
+The model uses **61 codon-usage features** extracted from coding sequences predicted by Prodigal:
 
-ProbioLens supports two input modes:
+- 59 Relative Synonymous Codon Usage (RSCU) features
+- Effective Number of Codons (ENC)
+- Codon Adaptation Index (CAI)
 
-1. **Complete Genome Prediction:** Analyse a FASTA file representing a complete genome.
-2. **MAG Prediction:** Analyse an individual MAG or multiple MAG FASTA files from a directory, with optional contig-length filtering.
-
-The package is designed for command-line use and produces structured CSV output for downstream analysis.
+The classifier is loaded from `model/probiolens_p_classifier.pkl`, located beside the script.
 
 ---
 
-## 🧠 Core Functionalities
+## ✨ Features
 
-* 🧬 **Genome-based prediction:** Evaluate probiotic potential and safety potential from nucleotide sequences.
-* 🔤 **8-mer Word2Vec embeddings:** Represent genomes using occurrence-weighted mean embeddings of valid 8-mers.
-* 🤖 **Machine-learning classification:** Apply the trained classifier corresponding to the selected prediction task.
-* 🧫 **Complete-genome analysis:** Process a single genome FASTA file.
-* 🧩 **MAG analysis:** Process individual MAGs or batches of MAG FASTA files.
-* 📏 **Contig-length filtering:** Exclude short contigs in MAG mode using a configurable length cutoff.
-* 🎚️ **Adjustable classification threshold:** Modify the probability threshold used to assign prediction labels.
-* 📊 **CSV output:** Save prediction probabilities, labels, contig statistics, and processing status.
-* 📦 **Portable Python package:** Install ProbioLens using pip, with the prediction models included in the package.
+- **Assembled genome prediction:** predict from one genome FASTA.
+- **Batch MAG prediction:** process every supported FASTA file in a directory, generating one result per file.
+- **Read-to-isolate workflow:** assemble reads using MEGAHIT and predict directly from the resulting contigs.
+- **Read-to-MAG workflow:** assemble reads, map reads to contigs, bin with MetaBAT2, assess bin quality with CheckM2, and predict each passing MAG separately.
+- **Configurable MAG quality criteria:** default minimum completeness is 20% and maximum contamination is 5%.
+- **CSV reporting:** prediction probability, label, input/assembly mode, quality metrics (where applicable), status, and errors are recorded.
 
 ---
 
+## ⚙️ Requirements
 
-## ⚙️ Installation
+### Python dependencies
 
-### Option 1 - Install using pip
+The script uses:
 
-The recommended installation method for routine prediction is pip.
+- Python 3
+- NumPy
+- pandas
+- scikit-learn
 
-```bash
-pip install probiolens
-```
-
-Check that the command-line interface is available:
-
-```bash
-probiolens --help
-```
-
-### Option 2 - Install in a dedicated Python environment
-
-Using an isolated Python environment can help avoid dependency conflicts with other bioinformatics tools.
+Install the Python dependencies in your environment, for example:
 
 ```bash
-python3 -m venv probiolens-env
-source probiolens-env/bin/activate
+python -m pip install numpy pandas scikit-learn
 ```
 
-Install ProbioLens:
+### External bioinformatics tools
+
+Install the tools required for the workflow you intend to run and make their executables available on `PATH`.
+
+| Tool | Required for |
+|---|---|
+| **Prodigal** (`prodigal`) | All prediction workflows; CDS prediction |
+| **MEGAHIT** (`megahit`) | Read-based assembly (`--assembly`) |
+| **Bowtie2** (`bowtie2`, `bowtie2-build`) | Read mapping in `--meta` workflow |
+| **samtools** (`samtools`) | BAM sorting and indexing in `--meta` workflow |
+| **MetaBAT2** (`metabat2`) | MAG binning in `--meta` workflow |
+| **CheckM2** (`checkm2`) | MAG quality assessment in `--meta` workflow |
+
+CheckM2 must already be configured to locate its database (for example, through its `CHECKM2DB` setup). The pipeline uses **8 threads by default** for external tools.
+
+---
+
+## 📦 Repository setup
+
+Clone the repository and enter it:
 
 ```bash
-python -m pip install --upgrade pip
-python -m pip install probiolens
+git clone https://github.com/shindebpratik/probiolens.git
+cd probiolens
 ```
 
-Verify the installation:
+Ensure the repository contains the script and model file in this layout:
 
-```bash
-probiolens --help
+```text
+probiolens/
+├── probiolens.py
+└── model/
+    └── probiolens_p_classifier.pkl
 ```
 
-On Windows, activate the environment using:
+The model file must be available at the exact relative location shown above (the script resolves it relative to its own location).
 
-```powershell
-probiolens-env\Scripts\activate
-```
-
-Then install ProbioLens using the same pip command.
-
-### Option 3 - Install from GitHub using Conda
-
-This option allows you to run ProbioLens directly from the cloned GitHub repository using the standalone Python script and bundled model files.
-
-**1. Clone the repository**
-
-Replace `<YOUR_GITHUB_REPOSITORY_URL>` with the URL of your ProbioLens repository.
-
-```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
-cd ProbioLens
-```
-
-**2. Create the Conda environment**
-
-Make sure Conda or Miniforge is installed.
-
-```bash
-conda env create -f probiolens.yml
-conda activate probiolens
-```
-
-**3. Verify the installation**
-
-Display the command-line help:
+Run the script directly:
 
 ```bash
 python probiolens.py --help
 ```
 
-Ensure that the `model/` directory contains all four pretrained model files before running a prediction.
+> Use the actual script filename present in your checkout if it differs from `probiolens.py`.
 
-**4. Run a test prediction**
+---
 
-Use the included `test.fasta` file to check that the script and model files are accessible. For example, if the script accepts the arguments shown below:
+## 🧭 Input modes and command-line options
+
+ProbioLens has two main input routes.
+
+### A. Already assembled FASTA
+
+Use `-i` / `--input` for:
+
+- one assembled genome FASTA file; or
+- a directory containing multiple MAG FASTA files.
+
+Supported FASTA extensions: `.fa`, `.fasta`, `.fna`, and `.fas`.
+
+### B. Sequencing reads requiring assembly
+
+Use `--assembly` (alias `--assemble`) with `-i1` / `--input1` and optionally `-i2` / `--input2`.
+
+With assembly, select exactly one workflow:
+
+- `--isolate`: predict the MEGAHIT assembly directly (no binning or CheckM2).
+- `--meta`: map reads, bin contigs, assess MAG quality, and predict each passing MAG independently.
+
+### Main options
+
+| Option | Description |
+|---|---|
+| `-i`, `--input` | Assembled genome FASTA or directory of MAG FASTA files |
+| `-i1`, `--input1` | First read file for assembly; single-end if `-i2` is omitted |
+| `-i2`, `--input2` | Second read file for paired-end sequencing; requires `-i1` and `--assembly` |
+| `-o`, `--output` | **Required.** Output CSV path |
+| `--assembly`, `--assemble` | Assemble sequencing reads with MEGAHIT |
+| `--isolate` | With assembly, predict the assembly directly |
+| `--meta` | With assembly, run binning/quality assessment and predict passing MAGs |
+| `--complete` | Minimum CheckM2 completeness percentage; default `20` |
+| `--contam` | Maximum CheckM2 contamination percentage; default `5` |
+| `-h`, `--help` | Show help |
+
+The `--isolate` and `--meta` options are mutually exclusive and are only used with `--assembly`. For read input, `-i1` alone specifies single-end reads; `-i1` together with `-i2` specifies paired-end reads.
+
+---
+
+## 🚀 Usage examples
+
+### 1. Predict from one assembled genome
 
 ```bash
 python probiolens.py \
-    --task P \
-    --mode complete \
-    --input test.fasta \
-    --output test_predictions.csv
-```
-
-Check the script's help output for the exact argument names supported by your version.
-
-**Note:** The saved classifiers use scikit-learn serialization. Compatibility with the dependency versions used during model training is important. If a model-loading or version-compatibility error occurs, report the error along with your Python, scikit-learn, and gensim versions.
-
-
----
-
-## 🧭 Usage Overview
-
-ProbioLens uses a unified command-line interface:
-
-```bash
-probiolens -i <input> -o <output.csv> -m <mode> -p <prediction> [options]
-```
-
-### Required arguments
-
-| Argument | Description |
-|---|---|
-| `-i`, `--input` | Input FASTA file or directory containing MAG FASTA files |
-| `-o`, `--output` | Output CSV file |
-| `-m`, `--mode` | Input mode: `complete` or `mag` |
-| `-p`, `--prediction` | Prediction task: `P` or `S` |
-
-### Optional arguments
-
-| Argument | Description | Default |
-|---|---|---|
-| `-t`, `--threshold` | Probability threshold for the positive prediction | `0.5` |
-| `--min-contig` | Contig-length cutoff in base pairs for MAG mode | `5000` |
-| `-h`, `--help` | Display the help message | - |
-
-The probability threshold must be between 0 and 1. In MAG mode, only contigs **strictly longer than** the selected cutoff are retained. The default cutoff of 5,000 bp therefore excludes contigs of exactly 5,000 bp.
-
----
-
-## 🧩 Detailed Usage Examples
-
-### 1. ProbioLens-P: Probiotic Potential Prediction
-
-Predict probiotic potential from a complete genome:
-
-```bash
-probiolens \
     -i genome.fasta \
-    -o probiotic_predictions.csv \
-    -m complete \
-    -p P
+    -o genome_prediction.csv
 ```
 
-The output includes the positive-class probability and the corresponding prediction label:
-
-* `Probiotic`
-* `Non-Probiotic`
-
-The classification label is assigned by comparing the model probability with the specified threshold.
-
-### 2. ProbioLens-S: Safety Potential Prediction
-
-Predict safety potential from a complete genome:
+### 2. Predict from one MAG
 
 ```bash
-probiolens \
-    -i genome.fasta \
-    -o safety_predictions.csv \
-    -m complete \
-    -p S
-```
-
-The output labels are:
-
-* `Safe`
-* `Not Safe`
-
-These labels represent the classifier's prediction of safety potential. They should not be interpreted as definitive evidence of clinical safety or pathogenicity.
-
-### 3. Predict Probiotic Potential from a MAG
-
-Analyse an individual MAG FASTA file:
-
-```bash
-probiolens \
+python probiolens.py \
     -i bin.fasta \
-    -o mag_probiotic_predictions.csv \
-    -m mag \
-    -p P
+    -o mag_prediction.csv
 ```
 
-By default, only contigs longer than 5,000 bp contribute to the genome representation.
-
-### 4. Predict Safety Potential from a MAG
+### 3. Batch prediction for a directory of MAGs
 
 ```bash
-probiolens \
-    -i bin.fasta \
-    -o mag_safety_predictions.csv \
-    -m mag \
-    -p S
+python probiolens.py \
+    -i /path/to/mags/ \
+    -o mag_predictions.csv
 ```
 
-This applies the safety-potential classifier to the retained contigs and saves the resulting prediction in CSV format.
+Each FASTA file is processed independently and receives its own prediction row.
 
-### 5. Batch Prediction for Multiple MAGs
-
-ProbioLens can process FASTA files contained in a directory:
+### 4. Assemble single-end isolate reads and predict
 
 ```bash
-probiolens \
-    -i /path/to/MAGs/ \
-    -o mag_predictions.csv \
-    -m mag \
-    -p P
+python probiolens.py \
+    -i1 reads.fastq.gz \
+    --assembly \
+    --isolate \
+    -o isolate_prediction.csv
 ```
 
-The input directory should contain supported FASTA files, including `.fa`, `.fasta`, `.fna`, or `.fas` files. Files are processed individually, and their results are combined into a single output CSV.
-
-For safety-potential prediction, use `-p S` instead of `-p P`.
-
-### 6. Change the Probability Threshold
-
-The default classification threshold is 0.5. To use a threshold of 0.7:
+### 5. Assemble paired-end isolate reads and predict
 
 ```bash
-probiolens \
-    -i genome.fasta \
-    -o predictions_threshold_07.csv \
-    -m complete \
-    -p P \
-    -t 0.7
+python probiolens.py \
+    -i1 reads_R1.fastq.gz \
+    -i2 reads_R2.fastq.gz \
+    --assembly \
+    --isolate \
+    -o isolate_prediction.csv
 ```
 
-Increasing the threshold makes a positive prediction more stringent. The appropriate threshold should be selected based on the intended application and relevant validation results.
-
-### 7. Change the MAG Contig-Length Cutoff
-
-To retain only contigs strictly longer than 10,000 bp:
+### 6. Assemble single-end metagenomic reads, bin, and predict MAGs
 
 ```bash
-probiolens \
-    -i bin.fasta \
-    -o mag_predictions.csv \
-    -m mag \
-    -p P \
-    --min-contig 10000
+python probiolens.py \
+    -i1 metagenomic_reads.fastq.gz \
+    --assembly \
+    --meta \
+    -o mag_predictions.csv
 ```
 
-This option changes the contigs used to calculate the genome embedding. Different cutoffs can change predictions, particularly for incomplete or fragmented MAGs.
-
-### 8. Display Help
+### 7. Assemble paired-end metagenomic reads with custom quality cutoffs
 
 ```bash
-probiolens --help
+python probiolens.py \
+    -i1 reads_R1.fastq.gz \
+    -i2 reads_R2.fastq.gz \
+    --assembly \
+    --meta \
+    --complete 50 \
+    --contam 3 \
+    -o mag_predictions.csv
 ```
 
-This displays the command-line options and examples.
+### 8. Display command-line help
+
+```bash
+python probiolens.py --help
+```
 
 ---
 
-## 🧬 Prediction Workflow
+## 🧬 Prediction workflow
 
-ProbioLens follows a sequence-based prediction workflow:
+### Assembled genome or MAG
 
-1. **Input processing:** Read the supplied complete-genome or MAG FASTA file.
-2. **Contig filtering:** In MAG mode, discard contigs that do not exceed the selected length cutoff.
-3. **8-mer extraction:** Identify valid nucleotide 8-mers composed of A, C, G, and T.
-4. **Embedding generation:** Retrieve the corresponding pretrained Word2Vec vectors and calculate an occurrence-weighted mean embedding.
-5. **Embedding centering:** Centre the mean embedding using the vocabulary-mean vector representation.
-6. **Model inference:** Apply the classifier associated with ProbioLens-P or ProbioLens-S.
-7. **Threshold-based classification:** Compare the positive-class probability with the selected threshold.
-8. **Result reporting:** Save predictions, probabilities, contig statistics, and processing status to a CSV file.
+1. Read the input FASTA.
+2. Run Prodigal to predict coding sequences and produce a nucleotide CDS FASTA (`.ffn`).
+3. Retain usable CDSs (length at least 60 nt, divisible by 3, and without internal stop codons).
+4. Require at least **50 usable CDSs** for codon-feature extraction.
+5. Calculate 59 RSCU features, ENC, and CAI.
+6. Apply the 61-feature probiotic classifier.
+7. Report the probiotic probability and threshold-based label.
 
-The package contains separate classifier and word-vector files for each prediction task. The selected model pair is loaded according to the `-p` argument.
+### Read-based isolate workflow (`--assembly --isolate`)
+
+1. Assemble reads using MEGAHIT.
+2. Run Prodigal and extract codon-usage features from the assembly.
+3. Predict probiotic potential for the assembly.
+
+### Read-based metagenome workflow (`--assembly --meta`)
+
+1. Assemble reads using MEGAHIT.
+2. Build a Bowtie2 index and map reads to the assembly.
+3. Sort and index the BAM file with samtools.
+4. Calculate contig depths using `jgi_summarize_bam_contig_depths`.
+5. Bin contigs using MetaBAT2.
+6. Assess bins using CheckM2.
+7. Retain bins meeting the configured quality criteria (default: completeness ≥ 20%; contamination ≤ 5%).
+8. Run an independent probiotic prediction for each passing MAG.
+9. Include quality-filtered-out bins in the results with their filtering status.
 
 ---
 
-## 📊 Output Description
+## 📁 Output and intermediate files
 
-ProbioLens writes a CSV file containing the following columns:
+The required `-o` argument specifies the prediction CSV. Pipeline intermediate files are automatically created beside it; no separate pipeline-directory option is needed.
+
+For assembly workflows, the pipeline directory is:
+
+```text
+<output_stem>_pipeline/
+├── assembly/
+├── mapping/                 # --meta workflow
+├── bins/                    # --meta workflow
+├── checkm2/                 # --meta workflow
+├── prodigal/
+├── bin_quality_filter.csv   # --meta workflow
+└── logs (*.stderr.log)
+```
+
+For non-assembly prediction, Prodigal output is stored in:
+
+```text
+<output_stem>_prodigal/
+```
+
+The script avoids overwriting non-empty pipeline output directories. Choose a new output filename or move previous intermediate results before rerunning.
+
+### Prediction CSV fields
+
+The CSV includes fields such as:
 
 | Column | Description |
 |---|---|
-| `genome` | Input FASTA filename |
-| `prediction_task` | Probiotic potential or safety potential |
-| `mode` | Input mode (`complete` or `mag`) |
-| `probability_positive` | Predicted probability for the positive class |
-| `threshold` | Threshold used to assign the label |
-| `predicted_label` | Final predicted class |
-| `contigs_total` | Total number of contigs in the input |
-| `contigs_used` | Number of contigs retained for analysis |
-| `contigs_filtered` | Number of contigs excluded by the MAG length filter |
-| `status` | Processing status (`success` or `failed`) |
-| `error` | Error description if processing fails |
+| `genome` | Genome, assembly, or bin name |
+| `prediction_task` | `Probiotic potential` |
+| `input_mode` | `complete` or `mag` |
+| `assembly_mode` | Empty for direct FASTA input; `isolate` or `meta` for assembly workflows |
+| `probability_probiotic` | Predicted probability for the probiotic class |
+| `threshold` | Classification threshold (`0.8`) |
+| `predicted_label` | `Probiotic`, `Non-Probiotic`, or a processing/filter status |
+| `completeness_percent` | CheckM2 completeness for MAG workflow; otherwise blank/NA |
+| `contamination_percent` | CheckM2 contamination for MAG workflow; otherwise blank/NA |
+| `quality_filter_passed` | Whether the MAG passed CheckM2 criteria; `not_assessed` where not applicable |
+| `contigs_total` | Number of FASTA sequences/contigs |
+| `contigs_used` | Number of contigs recorded as used |
+| `contigs_filtered` | Number of contigs filtered (zero for current direct codon-feature processing) |
+| `status` | Processing status, e.g. `success`, `failed`, or `filtered_out_quality` |
+| `error` | Error message, if applicable |
 
-### Example output
-
-The following values are illustrative examples of the output format, not actual model results.
-
-```csv
-genome,prediction_task,mode,probability_positive,threshold,predicted_label,contigs_total,contigs_used,contigs_filtered,status,error
-example_genome.fasta,Probiotic potential,complete,0.91,0.5,Probiotic,120,120,0,success,
-example_bin.fasta,Safety potential,mag,0.84,0.5,Safe,350,142,208,success,
-```
-
-For a failed prediction, the output includes a failure status and an error message to help identify the problem.
+For the metagenome workflow, bins that fail CheckM2 criteria are included in the CSV as `filtered_out_quality` and are not passed to the classifier. A bin that passes quality filtering but fails prediction is recorded as `failed`.
 
 ---
 
-## ⚠️ Important Considerations
+## ⚠️ Important considerations
 
-* **Prediction versus confirmation:** A positive prediction does not establish that a strain is an effective probiotic or clinically safe. Experimental validation and appropriate safety assessment remain necessary.
-* **Safety interpretation:** The `Safe` and `Not Safe` labels are model outputs, not definitive regulatory or clinical safety determinations.
-* **MAG completeness:** Fragmentation and incomplete genome recovery can affect the representation generated from a MAG. The contig-length filter does not itself measure genome completeness.
-* **Probability interpretation:** The reported probability is a model output. It should not automatically be interpreted as a calibrated clinical probability.
-* **Threshold selection:** A threshold of 0.5 is the default, not necessarily the optimal operating point for every application.
-* **Model compatibility:** Saved classifiers may depend on the versions of Python libraries used during model development.
-* **Input requirements:** Input sequences must be supplied in FASTA format. Only valid A/C/G/T 8-mers contribute to the embedding.
+- **Prediction is not experimental confirmation:** a `Probiotic` result does not establish probiotic efficacy or clinical safety.
+- **No safety classifier:** this version predicts probiotic potential only; it does not predict safety or replace safety assessment.
+- **Fixed threshold:** the current script uses a probability threshold of **0.8**; the threshold is not exposed as a CLI option.
+- **MAG quality is not a prediction guarantee:** completeness and contamination are used as bin filters in the `--meta` workflow, not as proof of biological quality.
+- **Minimum CDS requirement:** genomes with fewer than 50 usable CDSs cannot be processed for codon features.
+- **Feature/model compatibility:** the classifier must expect exactly 61 features in the same order (59 RSCU features, ENC, CAI).
+- **Model loading:** only load the pickle model from a trusted source; serialized Python models can execute code during loading.
+- **Probability interpretation:** the output is a model probability and should not automatically be interpreted as a calibrated clinical probability.
+- **External tools:** read workflows require the relevant tools and databases to be installed/configured correctly.
 
-ProbioLens is intended as a computational screening tool to support research and prioritisation. Predictions should be interpreted alongside genomic context, relevant biological evidence, and experimental findings.
+ProbioLens is intended as a computational screening and prioritisation tool. Interpret results with biological context and experimental evidence.
 
 ---
 
 ## 📖 Citation
 
-If you use ProbioLens in a publication, thesis, or other academic work, please cite the associated ProbioLens publication when available.
+If you use ProbioLens in a publication, thesis, or other academic work, cite the associated ProbioLens publication when available.
 
-**ProbioLens publication:**
+**ProbioLens publication:** *To be added.*
 
-
-Until a publication is available, you may cite the software release using its version number and a stable repository or archival record, if available.
+Until a publication is available, cite the software release and repository URL where appropriate.
 
 ---
 
 ## 📜 License
 
-ProbioLens is distributed under the license specified in the accompanying `LICENSE` file and package metadata.
-
-Please review the license terms before redistributing or modifying the software. The redistribution terms must also cover the bundled classifiers and word-vector files.
+ProbioLens is distributed under the license specified in the repository's `LICENSE` file, if present. Review the license and the redistribution terms for the bundled classifier before redistributing or modifying the software.
 
 ---
 
-## 👨‍💻 Support and Contributions
+## 👨‍💻 Support and contributions
 
-For bug reports, installation issues, or feature requests, please use the project's issue tracker or contact the corresponding maintainer.
+For bug reports, installation issues, or feature requests, please use the repository issue tracker.
 
-* **GitHub:** https://github.com/shindebpratik/probiolens
-* **Contact:** Pratik Shinde - pratiks@iiitd.ac.in
+- **GitHub:** https://github.com/shindebpratik/probiolens
+- **Contact:** Pratik Shinde — pratiks@iiitd.ac.in
 
-When reporting an issue, include the ProbioLens version, Python version, relevant dependency versions, the command used, and the complete error message. Avoid sharing confidential genome data or other sensitive information in public issue reports.
+When reporting an issue, include the command used, operating system, Python and dependency versions, relevant external-tool versions, and the complete error message. Do not upload confidential genome data to public issues.

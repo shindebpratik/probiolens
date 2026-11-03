@@ -2,7 +2,7 @@
 
 ProbioLens is a command-line toolkit for predicting **probiotic potential** from bacterial genome sequences using a codon-usage-based machine-learning model. It supports assembled isolate genomes, individual MAGs, batches of MAG FASTA files, and read-based workflows that assemble sequencing reads with MEGAHIT.
 
-The current implementation uses **one probiotic-potential classifier (ProbioLens-P)**. It does not provide the former embedding-based prediction workflow or a separate ProbioLens-S safety model.
+The current implementation uses **one probiotic-potential classifier (ProbioLens)**. It does not provide the former embedding-based prediction workflow or a separate ProbioLens-S safety model.
 
 ---
 
